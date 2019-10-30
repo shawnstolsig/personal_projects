@@ -140,21 +140,29 @@ def play_hand(player_id):
         print(f"{the_deal[player_id]} with value(s) of {hand_value_list}")
 
         # print dealer's advice
-        print(f"Dealer says: {get_deal_advice(hand_value_list)}")
+        dealer_advice = get_deal_advice(hand_value_list)
+        if dealer_advice == 'blackjack!':
+            print("Congrats on blackjack! You win now.") 
+        else:
+            print(f"Dealer says: {dealer_advice}")
 
-        # get user's input on next action
-        user_choice = input("Tell dealer what to do: ")
-        
-        # continue to loop while not given input of 'stay' or 'hold' 
-        while user_choice not in ['stay', 'Stay', 's', 'hold', 'Hold', 'h', 'bust', 'stand']:
-            the_deal[player_id].append(get_card())
-            hand_value_list = get_hand_value(the_deal[player_id])
-            print(f"{the_deal[player_id]} with value(s) of {hand_value_list}")
-            print(f"Dealer says: {get_deal_advice(hand_value_list)}")
-            if get_deal_advice(hand_value_list) == 'bust':
-                break
-            else:
-                user_choice = input("Now what? ")
+            # get user's input on next action
+            user_choice = input("Tell dealer what to do: ")
+            
+            # continue to loop while not given input of 'stay' or 'hold' 
+            while user_choice not in ['stay', 'Stay', 's', 'hold', 'Hold', 'h', 'bust', 'stand']:
+                the_deal[player_id].append(get_card())
+                hand_value_list = get_hand_value(the_deal[player_id])
+                print(f"{the_deal[player_id]} with value(s) of {hand_value_list}")
+
+                # get dealer advice
+                dealer_advice = get_deal_advice(hand_value_list)
+                print(f"Dealer says: {dealer_advice}")
+                if dealer_advice == 'bust':
+                    print("Sorry, you busted.  You lose now.")
+                    break
+                else:
+                    user_choice = input("Now what? ")
 
 # function to return advice from the dealer to the player
 def get_deal_advice(hand_value):
