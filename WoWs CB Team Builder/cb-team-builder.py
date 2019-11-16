@@ -77,21 +77,24 @@ class Clan:
         #   3. Iterate through the list and find the highest scoring Lineup
         #   4. If the highest scoring Lineup is -INF, then there is no valid lineup and it will err
 
-        # Get list of permutations
-        player_perms = list(permutations(player_list,team_size))
-        
-        # Iterate through permutations and create lineups
+        # Create empty list for Lineup permutations
         player_perm_list = []
+        # create a counter, this will serve as each Lineup's ID
         lineup_id = 0
-        for perm in player_perms:
+        # iterate through all possible permutations of input player list and specified team size
+        for perm in list(permutations(player_list,team_size)):
+            # increment lineup_ID
             lineup_id += 1
+            # create a new Lineup, appended to lineup list
             player_perm_list.append(Lineup(perm, self, lineup_id))
+        # after all Lineup permutations are generated, the lineup_id will be the same as the total permutation count
         total_perm_count = lineup_id
         
-        # iterate through Lineups and find the one with the highest score
+        # create variable for tracking the number of invalid lineups
         bad_perm_count = 0
 
-        # iterate through from end of list to front so that bad lineups can be removed without causing index errors
+        # iterate through all generated lineups
+        # iterating in reverse order so that lineups can be removed without IndexError
         for i in range(len(player_perm_list)-1,-1,-1):
             # if the current lineup is invalid (score is -inf)
             if player_perm_list[i].score == -math.inf:
@@ -183,7 +186,6 @@ class Clan:
         # return return dict
         return return_dict
 
-
 class Player:
     '''
     '   This class will represent each member of a clans roster.  
@@ -214,19 +216,18 @@ class Player:
         self.join_date = input_list[1]          # clan join date
         self.is_active = True                   # is player an active player
         self.is_alpha_team = True               # is the player a "core" or Alpha team player, as decided by clan admirals?
-        # self.main_ship_class = ''               # what is their main class of ship (carrier-CV, battleship-BB, cruiser-CA, destroyer-DD, submarine-SS)
+        self.main_ship_class = 'Not Specified'  # what is their main class of ship (carrier-CV, battleship-BB, cruiser-CA, destroyer-DD, submarine-SS)
         self.overall_PR = 1500                  # Overall Personal Rating
         self.overall_WR = .6                    # Overall Win Rate
         self.overall_avg_damage = 90,000        # Overall Avg Damage
         self.ships = {}                         # ship roster, list of dictionaries as a dict
            
         # iterate through header_list after the username/join date columns (iterate through each ship)
-        print(all_ships)
         for i in range(len(all_ships)):
             # append dictionary to ship list if the ship is unlocked
             if 'Y' in input_list[i+2]:          # using i+2 for input_list to trim username and join date
-                print(f"adding {self.username_wg}  ship {all_ships[i]}")
-                # Ship specific attributes
+
+                # set ship-specific attributes
                 is_ship_available = True        # do they have the ship in port, ready to play? 
                 leg_mod = False                 # do they have legendary module for that ship?
                 player_pref = False             # does the player prefer to play this ship?
@@ -236,16 +237,18 @@ class Player:
                 ship_WR  = .5                   # Ship-specific Win rate
                 ship_avg_damage = 100,000       # Ship-specific Avg damage
 
+
+                ####    This block of code will probably be deleted once Settings can be input in UI    #####
                 # check to see if they have legendary mod 
                 if 'mod' in input_list[i+2]:
                     leg_mod = True
                 # check to see if this ship is preferred for them
                 if '*' in input_list[i+2]:
                     player_pref = True
-
                 # check player's PR rating with ship
                 # CODE HERE to get and update PR, WR, and avg damage....json from Wargaming?
                 
+                # create ship entry for the current ship
                 self.ships[all_ships[i]] = {  'is_ship_available': is_ship_available,
                                                 'legendary': leg_mod, 
                                                 'player_preferred': player_pref, 
@@ -257,6 +260,7 @@ class Player:
                                                 }
 
 
+    # dunder function so that the player's WG username is how that player is displayed
     def __repr__(self):
         return self.username_wg
  
@@ -293,7 +297,7 @@ class Lineup:
         self.player_and_ship_list = []
 
         # combine player and ship list into one list of lists
-        for i in range(len(input_player_list)):
+        for i in range(len(clan.target_ship_lineup)):
             self.player_and_ship_list.append( [input_player_list[i], clan.target_ship_lineup[i]] )
 
         # initialize points for this player/ship combo
@@ -326,7 +330,7 @@ class Lineup:
         # set score equal to points
         self.score = points
 
-
+    # a function for displaying what a Lineup looks like (it'll print off all 8 player/ship combos)
     def __repr__(self):
         ''' Parameters: none Returns: string with each player/ship seperated on newlines '''
         return_string = ''
@@ -424,7 +428,7 @@ class Interface:
             self.player_count.configure(text=f"Player Count: {len(self.tree_selected_players.get_children())}")
             self.player_count.grid(column=3, row=14, sticky=N)
 
-            # enable button if enough players are selected
+            # enable button only if enough players are selected
             if len(self.tree_selected_players.get_children()) == len(self.stored_clan.target_ship_lineup):
                 self.button_generate_lineups.configure(state = 'normal')
             else:
@@ -532,7 +536,6 @@ class Interface:
 
 
 # =====================   Non-class FUNCTIONS  =========================== #
-
 def get_sheets_data(spreadsheets_id, range_name):
     '''
     '   This function handles the authentication and retrieval of data from a Google Sheet
@@ -610,11 +613,6 @@ except:
 
 # # create Clan object using output from sheets
 clan = Clan(sheets_output)                                                        
-# # test player inputs
-short_player_list_test = [clan.get_player('manbear67'), clan.get_player('SWOdaddy'), clan.get_player('ItsAGameThing')]
-actual_player_list = [clan.get_player('_Switch'), clan.get_player('br4in6'), clan.get_player('Kage_Acheron'), clan.get_player('Maelon'), clan.get_player('McRendel1ten'), clan.get_player('Sh1Zuk0'), clan.get_player('tehDugong'), clan.get_player('Ztulc')]
-oversize_player_list = [clan.get_player('manbear67'), clan.get_player('SWOdaddy'), clan.get_player('_Switch'), clan.get_player('br4in6'), clan.get_player('Kage_Acheron'), clan.get_player('Maelon'), clan.get_player('McRendel1ten'), clan.get_player('Sh1Zuk0'), clan.get_player('tehDugong'), clan.get_player('Ztulc')]
-supersize_player_list = [   clan.get_player('manbear67'), clan.get_player('SWOdaddy'), clan.get_player('_Switch'), clan.get_player('br4in6'), clan.get_player('Kage_Acheron'), clan.get_player('Maelon'), clan.get_player('McRendel1ten'), clan.get_player('Sh1Zuk0'), clan.get_player('tehDugong'), clan.get_player('Ztulc'),clan.get_player('4_TRIDENT_4'),clan.get_player('Acqua_Reale'),clan.get_player('Admiral_Calamari'),clan.get_player('Admiral_Gloval'),clan.get_player('Feuerja'),clan.get_player('kalman81')]
 
 # set up GUI
 root = Tk()
@@ -623,7 +621,7 @@ root = Tk()
 image = PhotoImage(file='wows_icon.png')
 
 # create instance of interface
-
 gui = Interface(root, clan, image)
 
+# main Tkinter loop
 root.mainloop()
