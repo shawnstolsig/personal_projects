@@ -12,6 +12,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 # Other imports
+import secrets                   # this is a file hidden from Github, containing API keys
 import math                             # for using INF in Lineup scoring system
 from tkinter import *                   # for GUI
 from tkinter import ttk                 # for themed widgets
@@ -39,8 +40,8 @@ class Clan:
         self.roster = []
 
         # the desired ship lineup, as a list of strings
-        # self.target_ship_lineup = ['Kremlin', 'Yamato', 'Smolensk', 'Moskva', 'Des Moines', 'Kleber', 'Kleber', 'Gearing']
-        self.target_ship_lineup = ['Z-52', 'Khabarovsk', 'Yueyang', 'Shimakaze', 'Gearing', 'Grozovoi', 'Harugumo', 'Daring']
+        self.target_ship_lineup = ['Kremlin', 'Yamato', 'Smolensk', 'Moskva', 'Des Moines', 'Kleber', 'Kleber', 'Gearing']
+        # self.target_ship_lineup = ['Z-52', 'Khabarovsk', 'Yueyang', 'Shimakaze', 'Gearing', 'Grozovoi', 'Harugumo', 'Daring']
         # try to retrieve all of the data from input file
         try:
             # iterate through rows after header, add Player objects to roster
@@ -68,14 +69,16 @@ class Clan:
         '   Returns: a Lineup object
         '''
 
-        #   Here's how the algorithm will work:
+        #   Here's how the algorithm works:
         #   1. Generate all possible permutations of n players.  Each permutation is stored as a type Lineup
         #       a. In the Lineup ___init__ function, a score for the Lineup will be generated
-        #       b. The score will then be used to decide which Lineup is best
-        #       c. If a player is paired with a ship that is not in their port, then that lineup will be given a score of -INF
+        #       b. The score will be used sort the Lineups, helping the user decide which is best
+        #       c. If a player is paired with a ship that is not in their port for a given Lineup, 
+        #          then that lineup will be given a score of -INF
         #   2. Each lineup is stored in a list
-        #   3. Iterate through the list and find the highest scoring Lineup
-        #   4. If the highest scoring Lineup is -INF, then there is no valid lineup and it will err
+        #   3. Iterate through lineups, and remove any with a -INF score
+        #   4. Sort Lineups by highest to lowest 
+        #   5. Return list of sorted, valid lineups
 
         # Create empty list for Lineup permutations
         player_perm_list = []
@@ -599,6 +602,8 @@ def get_sheets_data(spreadsheets_id, range_name):
 clan_info_spreadsheet_ID = '14oxx0qpWg7VWhRyYIVP6uv5YL40BQI15APGDOwsdZdQ'
 range_name = 'KSD Tier 10'
 team_size = 8
+
+# Wargaming API/Clan Battles 
 
 # for seeing if the Google Sheets API get works
 # print(get_sheets_data(clan_info_spreadsheet_ID, range_name))          
