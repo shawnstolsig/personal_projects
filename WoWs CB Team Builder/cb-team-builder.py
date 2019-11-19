@@ -12,8 +12,9 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 # Other imports
-import secrets                   # this is a file hidden from Github, containing API keys
+import api_keys                         # this is a file hidden from Github, containing API keys
 import math                             # for using INF in Lineup scoring system
+import json                             # for calling game's API
 from tkinter import *                   # for GUI
 from tkinter import ttk                 # for themed widgets
 from tkinter import messagebox
@@ -604,6 +605,7 @@ range_name = 'KSD Tier 10'
 team_size = 8
 
 # Wargaming API/Clan Battles 
+api_key_wg = api_keys.wg_api_key         # since API key is in hidden secrets file, must instaniate class and get key value
 
 # for seeing if the Google Sheets API get works
 # print(get_sheets_data(clan_info_spreadsheet_ID, range_name))          
