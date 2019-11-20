@@ -545,37 +545,70 @@ class WOWsGame:
     '               
     '''
 
-    def __init__(self, key):
+    def __init__(self, api_key):
         ''' constructor for WOWsGame Object
         '   Attributes: 
         '
         '''
-        # attributes:
-        self.game_tier = 10       # which tier are is program working with?
-        self.game_ships = {}
+        # ATTRIBUTES:
+        
+        # WG API key for the program.  Imported/hidden so it's not revealed on GitHub
+        self.__api_key = api_key
+        # ship tier that we will be building a team at
+        self.game_tier = 10
+        # invalid/old/work in progress ships that should be excluded             
         self.game_invalid_ship_names = ['Paolo Emilio', 'Hayate', 'Slava', 'Brennus', 'STALINGRAD #2', 'Puerto Rico', 'Marceau', 'Goliath']
+        # empty dictionary for game ships
+        self.game_ships = {}
+        # update dictionary of game ships
+        self.update_ships()
 
+
+    def update_ships(self):
+        '''
+        '   A function for querying WG API to update the current ships in the game. 
+        '
+        '''
         # get ship info (all ships, with tier, name, type, and available upgrades)
-        response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={key}&fields=name%2C+tier%2C+type%2C+upgrades")
-        todos = json.loads(response.text)['data']
+        response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name")
+        page_query = json.loads(response.text)
+
+        # verify query worked
+        try:
+            # attempt to get page count for querying wiki
+            if page_query['status'] == "ok":
+                page_count = page_query['meta']['page_total']
+                print("Updating ships from WG servers...data pull successful.")
+        except:
+            print("Error getting ship data from WG API.  This error thrown from WOWsGame update_ships() method")
+
+        # empy list for storing all data
+        page_list = []
+        # iterate through page count
+        for i in range(page_count):
+            # query WG for that page of warships.  get ship ID (as key), name, tier, and type
+            response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name%2C+type%2C+tier&page_no={i+1}")
+            page_query = json.loads(response.text)
+            # iterate through page query
+            for ship in page_query['data'].items():
+                # append to list.  ship is a tuple, put into list so that it can be cast to a dict
+                page_list.append(dict([ship]))
 
         # take the JSON return and format a dicionary of ships, each with a 'name' string and a 'type' string
-        #### ISSUE...ONLY PULLING ONE PAGE OF SHIPS, NEED TO FIGURE OUT HOW TO GET MULTIPLE PAGES
-        for ship in todos:
-            if todos[ship]['tier'] == self.game_tier:
+        for i in range(len(page_list)):
+            # get ship id
+            ship_id = list(page_list[i].keys())[0]
+            if page_list[i][ship_id]['tier'] == self.game_tier:
 
-                # some ships have []...strip these
-                name = todos[ship]['name'].replace('[','').replace(']','')
+                # get current element name
+                name = page_list[i][ship_id]['name']
 
-                # filter out ships that aren't currently active/valid
-                if name not in self.game_invalid_ship_names:
-                    self.game_ships[ship] = {'name': name,
-                                            'type': todos[ship]['type'],
-                                            }
-
-
-
-
+                # filter out ships that aren't currently active/valid and aren't rental ships
+                if name[0] != '[' and name not in self.game_invalid_ship_names:
+                    # add ship to self dictionary
+                    self.game_ships[ship_id] = {'name': name,
+                                                'type': page_list[i][ship_id]['type'],
+                                                }
 
 
 # =====================    END OF CLASSES  ======================= # 
@@ -622,7 +655,7 @@ def get_sheets_data(spreadsheets_id, range_name):
 
     # delete next 5 rows when turning Google Sheets
     values = []
-    with open('Test Clan Info - KSD Tier 10.csv', 'r', encoding='utf-8') as f:
+    with open('resources\Test Clan Info - KSD Tier 10.csv', 'r', encoding='utf-8') as f:
         rows = f.read().split('\n')
     for row in rows:
         values.append(row.split(','))
@@ -660,10 +693,6 @@ except:
 # create Game object, passing in hidden API key
 game = WOWsGame(api_keys.wg_api_key)
 
-#test printing list of tX ships
-for ship in game.game_ships:
-    print(game.game_ships[ship]['name'])
-
 # # create Clan object using output from sheets
 clan = Clan(sheets_output)         
 
@@ -671,7 +700,7 @@ clan = Clan(sheets_output)
 root = Tk()
 
 # open image for right side
-image = PhotoImage(file='wows_icon.png')
+image = PhotoImage(file='images\wows_icon.png')
 
 # create instance of interface
 gui = Interface(root, clan, image)
