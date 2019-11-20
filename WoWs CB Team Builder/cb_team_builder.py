@@ -545,7 +545,7 @@ class WOWsGame:
     '               
     '''
 
-    def __init__(self, api_key):
+    def __init__(self, api_key, region):
         ''' constructor for WOWsGame Object
         '   Attributes: 
         '
@@ -554,15 +554,27 @@ class WOWsGame:
         
         # WG API key for the program.  Imported/hidden so it's not revealed on GitHub
         self.__api_key = api_key
+        # based on which region is selected, store the appropriate extension for the url
+        if region == 'NA':
+            self.__region = 'com'
+        elif region == 'RU':
+            self.__region = 'ru'
+        elif region == 'EU':
+            self.__region = 'eu'
+        elif region == 'ASIA':
+            self.__region = 'asia'               
         # ship tier that we will be building a team at
         self.game_tier = 10
         # invalid/old/work in progress ships that should be excluded             
         self.game_invalid_ship_names = ['Paolo Emilio', 'Hayate', 'Slava', 'Brennus', 'STALINGRAD #2', 'Puerto Rico', 'Marceau', 'Goliath']
         # empty dictionary for game ships
         self.game_ships = {}
-        # update dictionary of game ships
-        self.update_ships()
+        # empty dictionary for clans
+        self.clan_listing = {}
 
+        # update some attributes with built in methods
+        self.update_ships()
+        # self.update_all_clan_listing()        This function is slow, something that should only be run a few times a day.  Will need to have user input clan tag to load clan info.
 
     def update_ships(self):
         '''
@@ -570,7 +582,7 @@ class WOWsGame:
         '
         '''
         # get ship info (all ships, with tier, name, type, and available upgrades)
-        response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name")
+        response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name")
         page_query = json.loads(response.text)
 
         # verify query worked
@@ -587,7 +599,7 @@ class WOWsGame:
         # iterate through page count
         for i in range(page_count):
             # query WG for that page of warships.  get ship ID (as key), name, tier, and type
-            response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name%2C+type%2C+tier&page_no={i+1}")
+            response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name%2C+type%2C+tier&page_no={i+1}")
             page_query = json.loads(response.text)
             # iterate through page query
             for ship in page_query['data'].items():
@@ -610,6 +622,193 @@ class WOWsGame:
                                                 'type': page_list[i][ship_id]['type'],
                                                 }
 
+    def update_all_clan_listing(self):
+        '''
+        '   A method for updating the clan listing based on region.
+        '   note that this takes a minute or two to pull ~15k clans, 100 at a time.   
+        '''
+        # the api does not return a page count for this query, so we will iterate through until we get an error
+        query_count = 100         # API returns a count of 100 max, so we will initilize variable with same amount
+        page_num = 0              # will use this to pull specific page
+        # empy list for storing all data
+        page_list = []
+
+        # continue iterating until API returns count of 0
+        while query_count != 0:
+            print(f"query count is {query_count} and page num is {page_num}")
+            # increment page count
+            page_num += 1
+
+            # query WG for that page of clans.  get all clan data (mainly, id, tag and name)
+            response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/clans/list/?application_id={self.__api_key}&page_no={page_num}")
+            query = json.loads(response.text)
+
+            # iterate through page query
+            for i in range(len(query['data'])):
+                # append to list.  ship is a tuple, put into list so that it can be cast to a dict
+                page_list.append( {query['data'][i]['clan_id']: { 'tag': query['data'][i]['tag'], 'name': query['data'][i]['name'] } }  )
+            
+            # set count equal to what was returned by API
+            query_count = query['meta']['count']
+
+class Clan2:
+    '''
+    '   This class will hold all information related to a clan (mainly the roster and preferred ship lineup)
+    '   Attributes: A roster of players (list of Player objects)
+    '               A list of ships (the header of the input spreadsheet)
+    '   Methods: get_player - Get a player object from the clan's roster given a username string
+    '            generate_lineup - the main player lineup algorithm
+    '            get_list_of_players_owning_ship - get a list of players in the clan who own a specific ship
+    '
+    '''
+
+    def __init__(self, input_data):
+        ''' the init function for a Roster type '''
+
+        # roster is list of Player objects
+        self.roster = []
+
+        # the desired ship lineup, as a list of strings
+        self.target_ship_lineup = ['Kremlin', 'Yamato', 'Smolensk', 'Moskva', 'Des Moines', 'Kleber', 'Kleber', 'Gearing']
+        # self.target_ship_lineup = ['Z-52', 'Khabarovsk', 'Yueyang', 'Shimakaze', 'Gearing', 'Grozovoi', 'Harugumo', 'Daring']
+
+    def get_player(self, name):
+        '''
+        '   A function for retrieving player object of given input username
+        '   Parameters: WG username (string)        
+        '   Returns: Player object
+        '''
+        for i in range(len(self.roster)):
+            if self.roster[i].username_wg == name:
+                return self.roster[i]
+
+    def generate_lineup(self, player_list, team_size):
+        '''
+        '   This is the main algorithm for generating the best lineup.  One important note is that this algorithm
+        '   is reliant on having a player list that is exactly as long as the target ship lineup
+        '   Parameters: a list of player objects
+        '   Returns: a Lineup object
+        '''
+
+        #   Here's how the algorithm works:
+        #   1. Generate all possible permutations of n players.  Each permutation is stored as a type Lineup
+        #       a. In the Lineup ___init__ function, a score for the Lineup will be generated
+        #       b. The score will be used sort the Lineups, helping the user decide which is best
+        #       c. If a player is paired with a ship that is not in their port for a given Lineup, 
+        #          then that lineup will be given a score of -INF
+        #   2. Each lineup is stored in a list
+        #   3. Iterate through lineups, and remove any with a -INF score
+        #   4. Sort Lineups by highest to lowest 
+        #   5. Return list of sorted, valid lineups
+
+        # Create empty list for Lineup permutations
+        player_perm_list = []
+        # create a counter, this will serve as each Lineup's ID
+        lineup_id = 0
+        # iterate through all possible permutations of input player list and specified team size
+        for perm in list(permutations(player_list,team_size)):
+            # increment lineup_ID
+            lineup_id += 1
+            # create a new Lineup, appended to lineup list
+            player_perm_list.append(Lineup(perm, self, lineup_id))
+        # after all Lineup permutations are generated, the lineup_id will be the same as the total permutation count
+        total_perm_count = lineup_id
+        
+        # create variable for tracking the number of invalid lineups
+        bad_perm_count = 0
+
+        # iterate through all generated lineups
+        # iterating in reverse order so that lineups can be removed without IndexError
+        for i in range(len(player_perm_list)-1,-1,-1):
+            # if the current lineup is invalid (score is -inf)
+            if player_perm_list[i].score == -math.inf:
+                # update the bad lineup count
+                bad_perm_count += 1
+                # pop this element from the list
+                player_perm_list.pop(i)
+
+        # sort the remaining lineups by score
+        player_perm_list.sort(key=lambda x: x.score, reverse=True)
+
+        # some print messages about stats
+        print(f"{len(player_perm_list)} permutations were checked: {bad_perm_count} were invalid and {total_perm_count-bad_perm_count} were evaluated and compared against each other")
+
+        # check to see if there is no a valid lineup
+        if len(player_perm_list) == 0:
+            return False, bad_perm_count, total_perm_count
+        
+        # return sorted best to worst list of lineups, the total bad lineups that were thrown out, and the total permutations generated
+        return player_perm_list, bad_perm_count, total_perm_count
+    
+    def get_list_players_owning_ship(self, ship_name, player_list):
+        '''
+        '   This function will return a list of players in a given list who own a ship
+        '   Parameters: ship_name (string) and list of Player objects
+        '   Return: list of Player objects who own the ship
+        '''
+        # setup return list of players
+        return_list = []
+        # interate through players in player list
+        for player in player_list:
+            if ship_name in player.ships.keys():
+                return_list.append(player)
+        
+        # return return list
+        return return_list
+
+    def get_ordered_rare_ship_list(self, player_list):
+        ''' 
+        '   This method will provide a list of ships (with duplicates) in order of rarity
+        '   Parameters: Player list, ship list (strings)
+        '   Returns: list of ship strings in order of most to least rare
+        '''
+        # get dict using class helper method
+        # this dict has keys of ships in the lineup and values of how many players in the player list have that ship
+        ship_dict = self.get_dict_players_with_ships(player_list)
+
+        # set up empty return list
+        return_list = []
+
+        # this block of code creates a list of strings equal to the target ship lineup, 
+        # with each element being a ship that is needed in the lineup, in order of least to most rare
+        for i in range(min(ship_dict.values()), max(ship_dict.values())+1):     # iterate through ship rarirty from the most rare ship to least rare ship
+            for ship in ship_dict:                                              # iterate through all ships in dict
+                if ship_dict[ship] == i:                                        # if current ship is the rare one we are looking for
+                    for j in range(self.target_ship_lineup.count(ship)):    # append that ship name to the return list as many times as the ship appears in our target lineup
+                        return_list.append(ship)
+
+        # return the return lis
+        return return_list
+
+    def get_dict_players_with_ships(self, player_list):
+        '''
+        '   This function will help figure out how "rare" each ship is, based on the input Players
+        '   Parameters: list of Player objects, list of ships (as strings)
+        '   Return: a dictionary of ship: number of players with ship 
+        '''
+        # declare empty return dictionary
+        return_dict = {}
+
+        # iterate through ships in target lineup:
+        for ship in self.target_ship_lineup:
+            # if ship is already in dictionary, skip
+            if ship in return_dict.keys():
+                pass
+            # else if ship is not in dictionary
+            else: 
+                # init counter to 0
+                counter = 0
+                # iterate through players
+                for player in player_list:
+                    # check to see if player has that ship
+                    if ship in player.ships.keys():
+                        # increment counter if ship is there
+                        counter += 1
+                # add that ship to dictionary as a key with the number of players as the value
+                return_dict[ship] = counter
+            
+        # return return dict
+        return return_dict
 
 # =====================    END OF CLASSES  ======================= # 
 
@@ -691,10 +890,11 @@ except:
     exit()
 
 # create Game object, passing in hidden API key
-game = WOWsGame(api_keys.wg_api_key)
+game = WOWsGame(api_keys.wg_api_key, 'NA')
 
 # # create Clan object using output from sheets
-clan = Clan(sheets_output)         
+# clan = Clan(sheets_output)         
+clan = Clan2('KSD')
 
 # set up GUI
 root = Tk()
