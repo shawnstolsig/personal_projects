@@ -15,6 +15,7 @@ from google.auth.transport.requests import Request
 import api_keys                         # this is a file hidden from Github, containing API keys
 import math                             # for using INF in Lineup scoring system
 import json                             # for calling game's API
+import requests                         # useful for calling game's API
 from tkinter import *                   # for GUI
 from tkinter import ttk                 # for themed widgets
 from tkinter import messagebox
@@ -536,6 +537,47 @@ class Interface:
     def update_ship_comp(self):
         print('update ship comp')
         
+class WOWsGame:
+    ''''
+    '   This class will be used to manage current information about the game.
+    '   Attributes: game_ships = list of dictionaries of active ships at specific tier
+    '               game_tier = list of ships at a given tier
+    '               
+    '''
+
+    def __init__(self, key):
+        ''' constructor for WOWsGame Object
+        '   Attributes: 
+        '
+        '''
+        # attributes:
+        self.game_tier = 10       # which tier are is program working with?
+        self.game_ships = {}
+        self.game_invalid_ship_names = ['Paolo Emilio', 'Hayate', 'Slava', 'Brennus', 'STALINGRAD #2', 'Puerto Rico', 'Marceau', 'Goliath']
+
+        # get ship info (all ships, with tier, name, type, and available upgrades)
+        response = requests.get(f"https://api.worldofwarships.com/wows/encyclopedia/ships/?application_id={key}&fields=name%2C+tier%2C+type%2C+upgrades")
+        todos = json.loads(response.text)['data']
+
+        # take the JSON return and format a dicionary of ships, each with a 'name' string and a 'type' string
+        #### ISSUE...ONLY PULLING ONE PAGE OF SHIPS, NEED TO FIGURE OUT HOW TO GET MULTIPLE PAGES
+        for ship in todos:
+            if todos[ship]['tier'] == self.game_tier:
+
+                # some ships have []...strip these
+                name = todos[ship]['name'].replace('[','').replace(']','')
+
+                # filter out ships that aren't currently active/valid
+                if name not in self.game_invalid_ship_names:
+                    self.game_ships[ship] = {'name': name,
+                                            'type': todos[ship]['type'],
+                                            }
+
+
+
+
+
+
 # =====================    END OF CLASSES  ======================= # 
 
 
@@ -604,9 +646,6 @@ clan_info_spreadsheet_ID = '14oxx0qpWg7VWhRyYIVP6uv5YL40BQI15APGDOwsdZdQ'
 range_name = 'KSD Tier 10'
 team_size = 8
 
-# Wargaming API/Clan Battles 
-api_key_wg = api_keys.wg_api_key         # since API key is in hidden secrets file, must instaniate class and get key value
-
 # for seeing if the Google Sheets API get works
 # print(get_sheets_data(clan_info_spreadsheet_ID, range_name))          
 
@@ -618,8 +657,15 @@ except:
     print("Error reaching Google Sheets, exiting. ")
     exit()
 
+# create Game object, passing in hidden API key
+game = WOWsGame(api_keys.wg_api_key)
+
+#test printing list of tX ships
+for ship in game.game_ships:
+    print(game.game_ships[ship]['name'])
+
 # # create Clan object using output from sheets
-clan = Clan(sheets_output)                                                        
+clan = Clan(sheets_output)         
 
 # set up GUI
 root = Tk()
