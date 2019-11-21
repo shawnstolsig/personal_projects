@@ -269,7 +269,7 @@ class Player:
     # dunder function so that the player's WG username is how that player is displayed
     def __repr__(self):
         return self.username_wg
- 
+
 class Lineup:
     '''
     '   This object will be use to hold a certain lineup of ships.  It will also have many of 
@@ -408,7 +408,6 @@ class Interface:
 
         # add info to lists
         for player in clan.roster:
-            print(player)
             self.tree_clan_players.insert('', 'end', clan.roster[player].player_id, text=clan.roster[player].username_wg)
 
         # store clan to be used for start_algorithm method
@@ -426,7 +425,7 @@ class Interface:
             # for each player in selection
             for player in selection:
                 # add player to selected tree view
-                self.tree_selected_players.insert('','end', player, text=player)
+                self.tree_selected_players.insert('','end', player, text=self.stored_clan.get_player_name_from_id(int(player)))
 
             # clear 'already selected" error message bhy forgetting the pack
             self.error_label.grid_forget()
@@ -572,7 +571,6 @@ class WOWsGame:
         # # read all ships from saved .pkl file
         self.game_ships = load_obj("all_ships")
         # self.game_ships = self.update_ships()
-        print(self.game_ships)
         # # read in all clans from saved .pkl file
         self.clan_directory = load_obj("clan_directory")
         # self.clan_directory = self.update_all_clan_directory() 
@@ -689,11 +687,11 @@ class Clan2:
         self.clan_name = self.game_info.clan_directory[self.clan_tag ]['name']
 
         # roster is list of Player objects
-        self.roster = self.update_roster()
+        # self.roster = self.update_roster()
+        self.roster = load_obj('clan_roster')
 
         # the desired ship lineup, as a list of strings
         self.target_ship_lineup = ['Kremlin', 'Yamato', 'Smolensk', 'Moskva', 'Des Moines', 'Kleber', 'Kleber', 'Gearing']
-        # self.target_ship_lineup = ['Z-52', 'Khabarovsk', 'Yueyang', 'Shimakaze', 'Gearing', 'Grozovoi', 'Harugumo', 'Daring']
 
     def get_player(self, name):
         '''
@@ -704,6 +702,14 @@ class Clan2:
         for i in range(len(self.roster)):
             if self.roster[i].username_wg == name:
                 return self.roster[i]
+
+    def get_player_name_from_id(self, player_id):
+        '''
+        '   A function for retrieving a player name when passed the player's id
+        '   Parameters: player_id (int)  return: player.username_wg (string)
+        '''
+        return self.roster[player_id].username_wg
+
 
     def generate_lineup(self, player_list, team_size):
         '''
@@ -847,9 +853,8 @@ class Clan2:
             # attempt to get page count for querying wiki
             if query['status'] == "ok":
                 print("Updating clan player roster from WG servers...data pull successful.")
-                print(query)
         except:
-            print("Error getting ship data from WG API.  This error thrown from WOWsGame update_ships() method")
+            print("Error getting roster from WG API.  This error thrown from update_roster method")
             return
 
         # empty object to return
@@ -911,7 +916,6 @@ class Player2:
         ship_WR  = .5                   # Ship-specific Win rate
         ship_avg_damage = 100,000       # Ship-specific Avg damage
 
-        print(f"Player {self.player_id} created")
 
         ####    This block of code will probably be deleted once Settings can be input in UI    #####
         # check to see if they have legendary mod 
@@ -941,7 +945,6 @@ class Player2:
 
         # verify query worked
         try:
-            # attempt to get page count for querying wiki
             if query['status'] == "ok":
                 print("Updating player basic info from WG servers...data pull successful.")
         except:
@@ -949,19 +952,81 @@ class Player2:
             return
 
         # update attributes
-        self.username_wg = query['data'][str(self.player_id)]['nickname']
-        self.last_battle_time = query['data'][str(self.player_id)]['last_battle_time'] 
-        wins = query['data'][str(self.player_id)]['statistics']['pvp']['wins'] 
-        total_battles = query['data'][str(self.player_id)]['statistics']['pvp']['battles']
-        self.overall_WR = round(wins/total_battles,3)
+        self.username_wg = query['data'][str(self.player_id)]['nickname']                       # user nickname
+        self.last_battle_time = query['data'][str(self.player_id)]['last_battle_time']          # time of last battle in timestamp ie 1528408800000 //  is 06/07/2018 @ 10:00pm (UTC)
+        wins = query['data'][str(self.player_id)]['statistics']['pvp']['wins']                  # total number of pvp wins
+        total_battles = query['data'][str(self.player_id)]['statistics']['pvp']['battles']      # total number of pvp battles
+        self.overall_WR = round(wins/total_battles,3)                                           # winrate, rounded to 3 decimals
 
         # self.overall_PR = 1500                  # Overall Personal Rating
         # self.overall_WR = .6                    # Overall Win Rate
         # self.overall_avg_damage = 90,000        # Overall Avg Damage
 
+        # create URL string for desired game ships
+        ship_url = ''
+        # iterating through and adding string version of the ship ID plus divider %2C+ string
+        for ship in self.game_info.game_ships:
+            ship_url += str(ship) + '%2C+'
+        # strip final %2C+ off
+        ship_url = ship_url[:len(ship_url)-4]
 
-        self.ships = {}                         # ship roster, list of dictionaries as a dict
+        # get that player's ship stats for all ships of concern.  if the player doesn't have that ship, then no pvp stats will be returned
+        response = requests.get(f"https://api.worldofwarships.{self.game_info.region}/wows/ships/stats/?application_id={self.game_info.api_key}&ship_id={ship_url}&account_id={self.player_id}&fields=ship_id%2C+pvp.battles%2C+pvp.damage_dealt%2C+pvp.wins")
+        query = json.loads(response.text)
 
+        # verify query worked
+        try:
+            if query['status'] == "ok":
+                print("Updating ship info from WG servers...data pull successful.")
+        except:
+            print("Error getting player ship stat data from WG API.  This error thrown from update_player_api_info method")
+            return
+
+        # Create empty dict for player ships
+        self.ships = {}
+
+        # try first to make sure the API is returning some number of playable ships
+        try:
+            print(f"API for player {self.username_wg} {self.player_id} shows they have {len(query['data'][str(self.player_id)])} ships from game_ships")
+
+            # for each ship returned by UI
+            for i in range(len(query['data'][str(self.player_id)])):
+                # retrieve ship ID
+                ship_id = query['data'][str(self.player_id)][i]['ship_id']
+                # retrieve ship wins
+                ship_wins = query['data'][str(self.player_id)][i]['pvp']['wins']
+                # retrieve total ship battles
+                ship_total_battles = query['data'][str(self.player_id)][i]['pvp']['battles']
+                # retreive total ship damage dealt
+                ship_total_damage_dealt = query['data'][str(self.player_id)][i]['pvp']['damage_dealt']
+                # calculate ship WR, rounded to 3 decimal places
+
+                # try to calculate averages, but except ZeroDivisionError in case player has never played ship
+                try:
+                    ship_WR = round(ship_wins/ship_total_battles, 3)
+                    # calculate ship averge damage, as an int/whole number
+                    ship_avg_damage = int(ship_total_damage_dealt/ship_total_battles)
+                except ZeroDivisionError:
+                    ship_WR = 0
+                    ship_avg_damage = 0
+
+                # create ship key/nested dict
+                self.ships[ship_id] = {     #'is_ship_available': True,
+                                            #'legendary': False, 
+                                            #'player_preferred': player_pref, 
+                                            #'admiral_strong_preferred': admiral_strong_pref,
+                                            #'admiral_weak_preferred': admiral_weak_pref,
+                                            #'ship_PR': ship_PR,
+                                            'ship_WR': ship_WR,
+                                            'ship_avg_damage': ship_avg_damage,
+                                            'ship_battles': ship_total_battles
+                                        }
+        except TypeError:
+            print(f"API for player {self.username_wg} {self.player_id} shows they have NoneType ships from game_ships")
+
+
+
+    
 
     # dunder function so that the player's WG username is how that player is displayed
     def __repr__(self):
