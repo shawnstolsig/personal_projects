@@ -491,7 +491,7 @@ class Interface:
         self.tree_possible_lineups.delete(*self.tree_possible_lineups.get_children())
         self.tree_selected_lineup.delete(*self.tree_selected_lineup.get_children())
 
-        # get list of player objects
+        # get list of player objects                                                                                            ###### PICKUP HERE, GET WORKING WITH NEW ROSTER/PLAYER DICTIONARY STRUCTURE
         player_obj_list = []
         for player in self.tree_selected_players.get_children():
             player_obj_list.append(self.stored_clan.get_player(player))
