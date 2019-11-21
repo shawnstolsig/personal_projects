@@ -208,7 +208,7 @@ class Player:
     '   Methods: __repr__
     '
     '''
-    def __init__(self, all_ships, input_list):
+    def __init__(self, id, all_ships, input_list):
         ''' 
         '   The init function for setting up a player
         '   Parameters: list of strings (their line on the Google sheet)       
@@ -216,6 +216,7 @@ class Player:
         '''
 
         # ATTRIBUTES
+        self.player_id = id                     # player ID from WG UI
         self.username_wg = input_list[0]        # Username within Wargaming database
         self.username_discord = ''              # Username within Discord
         self.join_date = input_list[1]          # clan join date
@@ -407,7 +408,8 @@ class Interface:
 
         # add info to lists
         for player in clan.roster:
-            self.tree_clan_players.insert('', 'end', player.username_wg, text=player.username_wg)
+            print(player)
+            self.tree_clan_players.insert('', 'end', clan.roster[player].player_id, text=clan.roster[player].username_wg)
 
         # store clan to be used for start_algorithm method
         self.stored_clan = clan
@@ -545,7 +547,7 @@ class WOWsGame:
     '               
     '''
 
-    def __init__(self, api_key, region):
+    def __init__(self, api_key, realm):
         ''' constructor for WOWsGame Object
         '   Attributes: 
         '
@@ -553,28 +555,27 @@ class WOWsGame:
         # ATTRIBUTES:
         
         # WG API key for the program.  Imported/hidden so it's not revealed on GitHub
-        self.__api_key = api_key
+        self.api_key = api_key
         # based on which region is selected, store the appropriate extension for the url
-        if region == 'NA':
-            self.__region = 'com'
-        elif region == 'RU':
-            self.__region = 'ru'
-        elif region == 'EU':
-            self.__region = 'eu'
-        elif region == 'ASIA':
-            self.__region = 'asia'               
+        if realm == 'NA':
+            self.region = 'com'
+        elif realm == 'RU':
+            self.region = 'ru'
+        elif realm == 'EU':
+            self.region = 'eu'
+        elif realm == 'ASIA':
+            self.region = 'asia'               
         # ship tier that we will be building a team at
         self.game_tier = 10
         # invalid/old/work in progress ships that should be excluded             
         self.game_invalid_ship_names = ['Paolo Emilio', 'Hayate', 'Slava', 'Brennus', 'STALINGRAD #2', 'Puerto Rico', 'Marceau', 'Goliath']
-        # empty dictionary for game ships
-        self.game_ships = {}
-        # empty dictionary for clans
-        self.clan_listing = {}
-
-        # update some attributes with built in methods
-        self.update_ships()
-        # self.update_all_clan_listing()        This function is slow, something that should only be run a few times a day.  Will need to have user input clan tag to load clan info.
+        # # read all ships from saved .pkl file
+        self.game_ships = load_obj("all_ships")
+        # self.game_ships = self.update_ships()
+        print(self.game_ships)
+        # # read in all clans from saved .pkl file
+        self.clan_directory = load_obj("clan_directory")
+        # self.clan_directory = self.update_all_clan_directory() 
 
     def update_ships(self):
         '''
@@ -582,7 +583,7 @@ class WOWsGame:
         '
         '''
         # get ship info (all ships, with tier, name, type, and available upgrades)
-        response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name")
+        response = requests.get(f"https://api.worldofwarships.{self.region}/wows/encyclopedia/ships/?application_id={self.api_key}&fields=name")
         page_query = json.loads(response.text)
 
         # verify query worked
@@ -596,10 +597,11 @@ class WOWsGame:
 
         # empy list for storing all data
         page_list = []
+        game_ships_dict = {}
         # iterate through page count
         for i in range(page_count):
             # query WG for that page of warships.  get ship ID (as key), name, tier, and type
-            response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/encyclopedia/ships/?application_id={self.__api_key}&fields=name%2C+type%2C+tier&page_no={i+1}")
+            response = requests.get(f"https://api.worldofwarships.{self.region}/wows/encyclopedia/ships/?application_id={self.api_key}&fields=name%2C+type%2C+tier&page_no={i+1}")
             page_query = json.loads(response.text)
             # iterate through page query
             for ship in page_query['data'].items():
@@ -618,11 +620,17 @@ class WOWsGame:
                 # filter out ships that aren't currently active/valid and aren't rental ships
                 if name[0] != '[' and name not in self.game_invalid_ship_names:
                     # add ship to self dictionary
-                    self.game_ships[ship_id] = {'name': name,
+                    game_ships_dict[ship_id] = {'name': name,
                                                 'type': page_list[i][ship_id]['type'],
                                                 }
 
-    def update_all_clan_listing(self):
+        # save the ship listing to a file
+        save_obj(game_ships_dict, "all_ships")
+
+        # return game ships
+        return game_ships_dict
+
+    def update_all_clan_directory(self):
         '''
         '   A method for updating the clan listing based on region.
         '   note that this takes a minute or two to pull ~15k clans, 100 at a time.   
@@ -631,7 +639,7 @@ class WOWsGame:
         query_count = 100         # API returns a count of 100 max, so we will initilize variable with same amount
         page_num = 0              # will use this to pull specific page
         # empy list for storing all data
-        page_list = []
+        clan_directory_dict = {}
 
         # continue iterating until API returns count of 0
         while query_count != 0:
@@ -640,16 +648,23 @@ class WOWsGame:
             page_num += 1
 
             # query WG for that page of clans.  get all clan data (mainly, id, tag and name)
-            response = requests.get(f"https://api.worldofwarships.{self.__region}/wows/clans/list/?application_id={self.__api_key}&page_no={page_num}")
+            response = requests.get(f"https://api.worldofwarships.{self.region}/wows/clans/list/?application_id={self.api_key}&page_no={page_num}")
             query = json.loads(response.text)
 
             # iterate through page query
             for i in range(len(query['data'])):
-                # append to list.  ship is a tuple, put into list so that it can be cast to a dict
-                page_list.append( {query['data'][i]['clan_id']: { 'tag': query['data'][i]['tag'], 'name': query['data'][i]['name'] } }  )
+                # append clan to dict.  each key is the clan tag, value is a nested dict containing "id" and "name"
+                clan_directory_dict[   query['data'][i]['tag']   ] = { 'id': query['data'][i]['clan_id'], 'name': query['data'][i]['name'] }
             
             # set count equal to what was returned by API
             query_count = query['meta']['count']
+
+
+        # write page_list to a file
+        save_obj(clan_directory_dict, "clan_directory")
+
+        # return clan directory dict after saving
+        return clan_directory_dict
 
 class Clan2:
     '''
@@ -662,11 +677,19 @@ class Clan2:
     '
     '''
 
-    def __init__(self, input_data):
+    def __init__(self, tag, wows_game_obj):
         ''' the init function for a Roster type '''
 
+        # store pointer to the wows_game objected
+        self.game_info = wows_game_obj
+
+        # retreive clan info from pickled directory
+        self.clan_tag = tag
+        self.clan_id = self.game_info.clan_directory[self.clan_tag ]['id']
+        self.clan_name = self.game_info.clan_directory[self.clan_tag ]['name']
+
         # roster is list of Player objects
-        self.roster = []
+        self.roster = self.update_roster()
 
         # the desired ship lineup, as a list of strings
         self.target_ship_lineup = ['Kremlin', 'Yamato', 'Smolensk', 'Moskva', 'Des Moines', 'Kleber', 'Kleber', 'Gearing']
@@ -810,6 +833,141 @@ class Clan2:
         # return return dict
         return return_dict
 
+    def update_roster(self):
+        '''
+        '   A function that will update the roster of players when given a clan tag
+        '
+        '''
+        # get ship info (all ships, with tier, name, type, and available upgrades)
+        response = requests.get(f"https://api.worldofwarships.{self.game_info.region}/wows/clans/info/?application_id={self.game_info.api_key}&clan_id={self.clan_id}")
+        query = json.loads(response.text)
+
+        # verify query worked
+        try:
+            # attempt to get page count for querying wiki
+            if query['status'] == "ok":
+                print("Updating clan player roster from WG servers...data pull successful.")
+                print(query)
+        except:
+            print("Error getting ship data from WG API.  This error thrown from WOWsGame update_ships() method")
+            return
+
+        # empty object to return
+        players = {}
+
+        # iterate through member ids, create new player for each
+        for player_id in query['data'][str(self.clan_id)]['members_ids']:
+            players[player_id] = Player2(player_id, self.game_info)
+
+        # store players
+        save_obj(players, "clan_roster")
+
+        # return players
+        return players
+
+class Player2:
+    '''
+    '   This class will represent each member of a clans roster.  
+    '   Attributes: username_wg (string)
+    '               username_discord (string)
+    '               join_date (string), 
+    '               ships (nested dict)
+    '               is_active (boolean)
+    '               is_alpha_team (boolean)
+    '               overall_PR (int)
+    '               overall_WR (float)
+    '               overall_avg_damage (int)
+    '               main_ship_class (string)
+    '               
+    '   Methods: __repr__
+    '
+    '''
+    def __init__(self, id, game_info):
+        ''' 
+        '   The init function for setting up a player
+        '   Parameters: list of strings (their line on the Google sheet)       
+        '   Returns: none (sets up their lists of ships and some other attributes)
+        '''
+
+        # ATTRIBUTES
+        self.player_id = id                     # player ID from WG UI
+        self.game_info = game_info              # store pointer to WOWsGame obj for access to ships and clans
+        self.update_player_api_info()
+
+        # unused..will be specified through UI, if at all
+        self.username_discord = ''              # Username within Discord      
+        self.is_active = True                   # is player an active player
+        self.is_alpha_team = True               # is the player a "core" or Alpha team player, as decided by clan admirals?
+        self.main_ship_class = 'Not Specified'  # what is their main class of ship (carrier-CV, battleship-BB, cruiser-CA, destroyer-DD, submarine-SS)
+        self.join_date = ''                     # clan join date
+
+        # set ship-specific attributes
+        is_ship_available = True        # do they have the ship in port, ready to play? 
+        leg_mod = False                 # do they have legendary module for that ship?
+        player_pref = False             # does the player prefer to play this ship?
+        admiral_strong_pref = False     # does an admiral strongly prefer the player plays this ship?
+        admiral_weak_pref = False       # does an admiral weakly prefer the player plays this ship?
+        ship_PR = 2000                  # Ship-specific Personal Rating
+        ship_WR  = .5                   # Ship-specific Win rate
+        ship_avg_damage = 100,000       # Ship-specific Avg damage
+
+        print(f"Player {self.player_id} created")
+
+        ####    This block of code will probably be deleted once Settings can be input in UI    #####
+        # check to see if they have legendary mod 
+        # check to see if this ship is preferred for them
+        # check player's PR rating with ship
+        # CODE HERE to get and update PR, WR, and avg damage....json from Wargaming?
+        
+        # create ship entry for the current ship
+        # self.ships[all_ships[i]] = {  'is_ship_available': is_ship_available,
+        #                                 'legendary': leg_mod, 
+        #                                 'player_preferred': player_pref, 
+        #                                 'admiral_strong_preferred': admiral_strong_pref,
+        #                                 'admiral_weak_preferred': admiral_weak_pref,
+        #                                 'ship_PR': ship_PR,
+        #                                 'ship_WR': ship_WR,
+        #                                 'ship_avg_damage': ship_avg_damage
+        #                                 }
+
+    def update_player_api_info(self):
+        '''
+        '   A function that will get WG API info for a player: username, last logout, ships unlocked, etc
+        '
+        '''
+        # get ship info (all ships, with tier, name, type, and available upgrades)
+        response = requests.get(f"https://api.worldofwarships.{self.game_info.region}/wows/account/info/?application_id={self.game_info.api_key}&account_id={self.player_id}&fields=last_battle_time%2C+nickname%2C+statistics.pvp.battles%2C+statistics.pvp.wins")
+        query = json.loads(response.text)
+
+        # verify query worked
+        try:
+            # attempt to get page count for querying wiki
+            if query['status'] == "ok":
+                print("Updating player basic info from WG servers...data pull successful.")
+        except:
+            print("Error getting player data from WG API.  This error thrown from WOWsGame update_player_api_info method")
+            return
+
+        # update attributes
+        self.username_wg = query['data'][str(self.player_id)]['nickname']
+        self.last_battle_time = query['data'][str(self.player_id)]['last_battle_time'] 
+        wins = query['data'][str(self.player_id)]['statistics']['pvp']['wins'] 
+        total_battles = query['data'][str(self.player_id)]['statistics']['pvp']['battles']
+        self.overall_WR = round(wins/total_battles,3)
+
+        # self.overall_PR = 1500                  # Overall Personal Rating
+        # self.overall_WR = .6                    # Overall Win Rate
+        # self.overall_avg_damage = 90,000        # Overall Avg Damage
+
+
+        self.ships = {}                         # ship roster, list of dictionaries as a dict
+
+
+    # dunder function so that the player's WG username is how that player is displayed
+    def __repr__(self):
+        return self.username_wg
+ 
+
 # =====================    END OF CLASSES  ======================= # 
 
 
@@ -866,7 +1024,21 @@ def get_sheets_data(spreadsheets_id, range_name):
     else:
         return values
 
+def save_obj(obj, name ):
+    ''' 
+    '   A function for saving an object to a file using pickle
+    '   Parameters: object and filename     Returns: none
+    '''
+    with open('resources/'+ name + '.pkl', 'wb') as f:
+        pickle.dump(obj, f, pickle.HIGHEST_PROTOCOL)
 
+def load_obj(name ):
+    ''' 
+    '   A function for loading an object from a file using pickle
+    '   Parameters: filename     Returns: object
+    '''
+    with open('resources/' + name + '.pkl', 'rb') as f:
+        return pickle.load(f)
 # =====================    END OF FUNCTIONS  ============================= #
 
 
@@ -894,7 +1066,7 @@ game = WOWsGame(api_keys.wg_api_key, 'NA')
 
 # # create Clan object using output from sheets
 # clan = Clan(sheets_output)         
-clan = Clan2('KSD')
+clan = Clan2('KSD', game)
 
 # set up GUI
 root = Tk()

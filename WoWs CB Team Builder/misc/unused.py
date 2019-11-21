@@ -172,3 +172,5 @@ class Lineup:
         # combine player and ship list into one list of lists
         for i in range(len(player_list)):
             self.player_and_ship_list.append( [player_list[i].username_wg, ship_list[i]] )
+
+            
